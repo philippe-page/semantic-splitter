@@ -1,14 +1,14 @@
 import os
 import numpy as np
 import cohere
-import networkx as nx
-from community import community_louvain
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from sentence_splitter import SentenceSplitter
 import logging
+import leidenalg
+import igraph as ig
 
 class SemanticSplitter:
-    def __init__(self, api_key: Optional[str] = None, similarity_threshold: float = 0.2):
+    def __init__(self, api_key: Optional[str] = None, chunk_size: str = 'medium'):
         if api_key is None:
             api_key = os.environ.get('COHERE_API_KEY')
         if api_key is None:
@@ -16,12 +16,22 @@ class SemanticSplitter:
         self.co = cohere.Client(api_key)
 
         self.embedding_model = 'embed-english-v3.0'
-        self.similarity_threshold = similarity_threshold
+        self.chunk_params = {
+            'fine': {'resolution_parameter': 2, 'min_chunk_size': 200},
+            'medium': {'resolution_parameter': 1.5, 'min_chunk_size': 300},
+            'large': {'resolution_parameter': 1, 'min_chunk_size': 400}
+        }
+        self.set_chunk_size(chunk_size)
 
         # Initialize the sentence splitter
         self.splitter = SentenceSplitter(language='en')
 
-    def chunk_text(self, text: str) -> List[str]:
+    def set_chunk_size(self, chunk_size: str):
+        params = self.chunk_params.get(chunk_size, self.chunk_params['medium'])
+        self.resolution_parameter = params['resolution_parameter']
+        self.min_chunk_size = params['min_chunk_size']
+
+    def chunk_text(self, text: str) -> Tuple[List[str], List[int]]:
         # Step 1: Create segments (now using sentences instead of fixed-length segments)
         segments = self._create_sentence_segments(text)
         
@@ -34,6 +44,9 @@ class SemanticSplitter:
         
         # Step 4: Create chunks based on detected boundaries
         chunks = self._create_chunks_from_boundaries(segments, boundaries)
+        
+        # Step 5: Merge small chunks
+        chunks = self._merge_small_chunks(chunks, segments)
         
         print(f"Number of final chunks: {len(chunks)}")
         for i, chunk in enumerate(chunks):
@@ -66,29 +79,34 @@ class SemanticSplitter:
             return []
         
         # Create a fully connected graph
-        G = nx.Graph()
+        G = ig.Graph.Full(embeddings.shape[0])
+        weights = []
         for i in range(embeddings.shape[0]):
             for j in range(i+1, embeddings.shape[0]):
                 similarity = np.dot(embeddings[i], embeddings[j])
-                if similarity > self.similarity_threshold:
-                    G.add_edge(i, j, weight=similarity)
+                weights.append(similarity)
         
-        # Ensure all nodes are in the graph
-        G.add_nodes_from(range(embeddings.shape[0]))
+        G.es['weight'] = weights
         
-        # Apply Louvain community detection
-        communities = community_louvain.best_partition(G)
+        # Apply Leiden community detection with resolution parameter
+        partition = leidenalg.find_partition(
+            G, 
+            leidenalg.RBConfigurationVertexPartition,
+            weights='weight',
+            resolution_parameter=self.resolution_parameter
+        )
         
         # Find community boundaries
         boundaries = []
-        prev_community = communities.get(0, 0)  # Default to 0 if not found
+        prev_community = partition.membership[0]
         for i in range(1, embeddings.shape[0]):
-            current_community = communities.get(i, prev_community)  # Use previous if not found
+            current_community = partition.membership[i]
             if current_community != prev_community:
                 boundaries.append(i)
             prev_community = current_community
         
         print(f"Detected boundaries: {boundaries}")
+        print(f"Total communities: {len(set(partition.membership))}")
         return boundaries
 
     def _create_chunks_from_boundaries(self, segments: List[str], boundaries: List[int]) -> List[str]:
@@ -107,19 +125,34 @@ class SemanticSplitter:
         logging.info(f"Created {len(chunks)} non-empty chunks")
         return chunks
 
-def chunk_text(text: str, api_key: Optional[str] = None, similarity_threshold: float = 0.2) -> List[str]:
-    """
-    A convenience function to chunk text without explicitly creating a SemanticSplitter instance.
+    def _merge_small_chunks(self, chunks: List[str], segments: List[str]) -> List[str]:
+        merged_chunks = []
+        current_chunk = ""
+        segment_index = 0
 
-    Args:
-        text (str): The input text to be chunked.
-        api_key (Optional[str]): Cohere API key. If None, it will try to use the COHERE_API_KEY environment variable.
-        similarity_threshold (float): The similarity threshold for detecting topic boundaries. Default is 0.6.
+        for chunk in chunks:
+            if len(current_chunk) + len(chunk) < self.min_chunk_size:
+                current_chunk += " " + chunk if current_chunk else chunk
+            else:
+                if current_chunk:
+                    # If current_chunk is still too small, add more sentences
+                    while len(current_chunk) < self.min_chunk_size and segment_index < len(segments):
+                        current_chunk += " " + segments[segment_index]
+                        segment_index += 1
+                    merged_chunks.append(current_chunk.strip())
+                current_chunk = chunk
 
-    Returns:
-        List[str]: A list of text chunks.
-    """
-    chunker = SemanticSplitter(api_key=api_key, similarity_threshold=similarity_threshold)
+        # Handle the last chunk
+        if current_chunk:
+            while len(current_chunk) < self.min_chunk_size and segment_index < len(segments):
+                current_chunk += " " + segments[segment_index]
+                segment_index += 1
+            merged_chunks.append(current_chunk.strip())
+
+        return merged_chunks
+
+def chunk_text(text: str, api_key: Optional[str] = None, chunk_size: str = 'medium') -> List[str]:
+    chunker = SemanticSplitter(api_key=api_key, chunk_size=chunk_size)
     chunks, _ = chunker.chunk_text(text)
     return chunks
 
