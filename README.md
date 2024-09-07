@@ -23,7 +23,7 @@ The process works as follows:
 
 3. The core of the algorithm lies in the `_detect_major_topic_boundaries` method. It constructs a graph where each node represents a sentence, and edges are drawn between sentences that are semantically similar (based on the dot product of their embeddings exceeding a threshold). This graph representation allows for a more nuanced understanding of the text's structure.
 
-4. The Louvain community detection algorithm is applied to this graph. This algorithm is particularly good at finding communities (clusters) in networks, which in this context correspond to coherent topics or themes in the text.
+4. The Leiden community detection algorithm is applied to this graph. This algorithm is particularly good at finding communities (clusters) in networks, which in this context correspond to coherent topics or themes in the text.
 
 5. By identifying where these communities change, the algorithm detects major topic boundaries in the text. These boundaries are then used to create chunks of text that are semantically coherent.
 
@@ -65,7 +65,6 @@ The benefits of this approach are numerous:
      ```
      COHERE_API_KEY=your-api-key-here
      ```
-   - Make sure to add `.env` to your `.gitignore` file to keep your API key secure
 
 4. Load the environment variables:
    - Install the `python-dotenv` package:
@@ -82,8 +81,8 @@ The benefits of this approach are numerous:
     ```python
     from semantic_splitter import SemanticSplitter
 
-    # Initialize SemanticSplitter with the provided similarity_threshold
-    splitter = SemanticSplitter()
+    # Initialize SemanticSplitter with the specified chunk size
+    splitter = SemanticSplitter(chunk_size=chunk_size)
 
     # Chunk the text
     chunks, communities = splitter.chunk_text(text)
