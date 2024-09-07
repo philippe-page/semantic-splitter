@@ -1,0 +1,5 @@
+numpy
+cohere
+networkx
+python-louvain
+sentence-splitter
