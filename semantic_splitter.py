@@ -17,9 +17,9 @@ class SemanticSplitter:
 
         self.embedding_model = 'embed-english-v3.0'
         self.chunk_params = {
-            'fine': {'resolution_parameter': 2, 'min_chunk_size': 50},
-            'medium': {'resolution_parameter': 1.5, 'min_chunk_size': 100},
-            'large': {'resolution_parameter': 1, 'min_chunk_size': 150}
+            'fine': {'similarity_threshold': 0.5, 'resolution_parameter': 2, 'min_chunk_size': 200},
+            'medium': {'similarity_threshold': 0.3, 'resolution_parameter': 1.5, 'min_chunk_size': 200},
+            'large': {'similarity_threshold': 0.1, 'resolution_parameter': 1.0, 'min_chunk_size': 200}
         }
         self.set_chunk_size(chunk_size)
 
@@ -28,6 +28,7 @@ class SemanticSplitter:
 
     def set_chunk_size(self, chunk_size: str):
         params = self.chunk_params.get(chunk_size, self.chunk_params['medium'])
+        self.similarity_threshold = params['similarity_threshold']
         self.resolution_parameter = params['resolution_parameter']
         self.min_chunk_size = params['min_chunk_size']
 
@@ -78,14 +79,19 @@ class SemanticSplitter:
         if embeddings.shape[0] < 2:
             return []
         
-        # Create a fully connected graph
-        G = ig.Graph.Full(embeddings.shape[0])
+        # Create a graph with edges based on similarity threshold
+        G = ig.Graph()
+        G.add_vertices(embeddings.shape[0])
+        edges = []
         weights = []
         for i in range(embeddings.shape[0]):
             for j in range(i+1, embeddings.shape[0]):
                 similarity = np.dot(embeddings[i], embeddings[j])
-                weights.append(similarity)
+                if similarity > self.similarity_threshold:
+                    edges.append((i, j))
+                    weights.append(similarity)
         
+        G.add_edges(edges)
         G.es['weight'] = weights
         
         # Apply Leiden community detection with resolution parameter
