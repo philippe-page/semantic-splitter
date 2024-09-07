@@ -1,5 +1,5 @@
 numpy
 cohere
-networkx
-python-louvain
+leidenalg
+igraph
 sentence-splitter
