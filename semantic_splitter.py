@@ -17,9 +17,9 @@ class SemanticSplitter:
 
         self.embedding_model = 'embed-english-v3.0'
         self.chunk_params = {
-            'fine': {'resolution_parameter': 2, 'min_chunk_size': 200},
-            'medium': {'resolution_parameter': 1.5, 'min_chunk_size': 300},
-            'large': {'resolution_parameter': 1, 'min_chunk_size': 400}
+            'fine': {'resolution_parameter': 2, 'min_chunk_size': 50},
+            'medium': {'resolution_parameter': 1.5, 'min_chunk_size': 100},
+            'large': {'resolution_parameter': 1, 'min_chunk_size': 150}
         }
         self.set_chunk_size(chunk_size)
 
