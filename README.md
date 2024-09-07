@@ -79,7 +79,7 @@ The benefits of this approach are numerous:
      ```
 
 ## Usage
-    ```
+    ```python
     from semantic_splitter import SemanticSplitter
 
     # Initialize SemanticSplitter with the provided similarity_threshold
