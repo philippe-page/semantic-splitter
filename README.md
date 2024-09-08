@@ -6,10 +6,9 @@ SemanticSplitter is a Python tool that chunks text based on semantic similarity.
 
 - Sentence-level text segmentation
 - Semantic similarity-based chunking
-- Adjustable similarity threshold
+- Adjustable resolution parameter for community detection
 - Integration with Cohere's embedding API
-- Community detection for identifying topic boundaries
-
+- Community detection using the Leiden algorithm
 
 ## How It Works
 
@@ -21,7 +20,7 @@ The process works as follows:
 
 2. Each sentence is then embedded using Cohere's embedding model. These embeddings capture the semantic meaning of each sentence in a high-dimensional vector space.
 
-3. The core of the algorithm lies in the `_detect_major_topic_boundaries` method. It constructs a graph where each node represents a sentence, and edges are drawn between sentences that are semantically similar (based on the dot product of their embeddings exceeding a threshold). This graph representation allows for a more nuanced understanding of the text's structure.
+3. A similarity graph is constructed where each node represents a sentence, and edges are weighted based on the cosine similarity between sentence embeddings.
 
 4. The Leiden community detection algorithm is applied to this graph. This algorithm is particularly good at finding communities (clusters) in networks, which in this context correspond to coherent topics or themes in the text.
 
@@ -31,7 +30,7 @@ The process works as follows:
 
 The benefits of this approach are numerous:
 
-1. **Semantic Coherence**: Unlike fixed-length chunking, this method ensures that each chunk contains semantically related content, making it more useful for downstream tasks like summarization or question-answering.
+1. **Semantic Coherence**: Unlike fixed-length chunking, this method ensures that each chunk contains semantically related content.
 
 2. **Adaptability**: The algorithm adapts to the natural structure of the text, creating larger chunks for areas with consistent topics and smaller chunks where topics change rapidly.
 
@@ -40,7 +39,6 @@ The benefits of this approach are numerous:
 4. **Improved Information Retrieval**: When used in conjunction with search or retrieval systems, these semantic chunks can lead to more relevant and contextually appropriate results.
 
 5. **Scalability**: The use of sentence embeddings and graph-based community detection allows this method to scale to very large documents while still capturing fine-grained semantic structure.
-
 
 ## Prerequisites
 
@@ -65,32 +63,32 @@ The benefits of this approach are numerous:
      ```
      COHERE_API_KEY=your-api-key-here
      ```
-
-4. Load the environment variables:
-   - Install the `python-dotenv` package:
-     ```
-     pip install python-dotenv
-     ```
-   - In your Python script, load the environment variables:
-     ```python
-     from dotenv import load_dotenv
-     load_dotenv()
-     ```
+   - Make sure to add `.env` to your `.gitignore` file to keep your API key secure
 
 ## Usage
-    ```python
-    from semantic_splitter import SemanticSplitter
 
-    # Initialize SemanticSplitter with the specified chunk size
-    splitter = SemanticSplitter(chunk_size=chunk_size)
+```python
+from semantic_splitter import SemanticSplitter
 
-    # Chunk the text
-    chunks, communities = splitter.chunk_text(text)
-    ```
+# Initialize SemanticSplitter
+splitter = SemanticSplitter()
+
+# Chunk the text with an optional resolution parameter
+text = "Your long text here..."
+chunks = SemanticSplitter.chunk_text(text, resolution=1.0)
+
+# Process the chunks
+for chunk in chunks:
+    print(chunk)
+    print("---")
+
+```
+
+The `resolution` parameter in the `chunk_text` method controls the granularity of the community detection. Higher values result in more communities (and thus more chunks), while lower values produce fewer, larger communities.
 
 ## Contributing
 
-This is still a work in progress so feel free to submit a PR.
+This is still a work in progress, so feel free to submit a PR.
 
 ## License
 
