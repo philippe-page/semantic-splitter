@@ -8,7 +8,7 @@ def split_and_print_chunks(file_path):
     splitter = SemanticSplitter()
 
     # Call chunk_text on the instance
-    chunks = splitter.chunk_text(text, resolution=0.34)
+    chunks = splitter.chunk_text(text, resolution=0.4)
 
     print(f"Number of chunks: {len(chunks)}")
     

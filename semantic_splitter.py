@@ -19,12 +19,12 @@ class SemanticSplitter:
         self.splitter = SentenceSplitter(language='en')
 
     @staticmethod
-    def chunk_text(text: str, resolution: float = 1.0) -> List[str]:
+    def chunk_text(text: str, resolution: float = 1.0, similarity_threshold: float = 0.5, rearrange: bool = False) -> List[str]:
         splitter = SemanticSplitter()
         segments = splitter._create_sentence_segments(text)
         embeddings = splitter._embed_segments(segments)
-        breakpoints = splitter._detect_communities(embeddings, resolution)
-        chunks = splitter._create_chunks_from_communities(segments, breakpoints)
+        communities = splitter._detect_communities(embeddings, resolution, similarity_threshold)
+        chunks = splitter._create_chunks_from_communities(segments, communities, rearrange)
         
         print(f"Created {len(chunks)} non-empty chunks")
         return chunks
@@ -44,23 +44,50 @@ class SemanticSplitter:
             embeddings.extend(response.embeddings)
         return np.array(embeddings)
 
-    def _detect_communities(self, embeddings: np.ndarray, resolution: float) -> List[int]:
+    def _detect_communities(self, embeddings: np.ndarray, resolution: float, similarity_threshold: float) -> List[int]:
         if embeddings.shape[0] < 2:
             return [0]
         
-        G = self._create_similarity_graph(embeddings)
+        G = self._create_similarity_graph(embeddings, similarity_threshold)
         
         partition = self._find_optimal_partition(G, resolution)
         
         communities = partition.membership
         
-        # Identify breakpoints where community changes
-        breakpoints = self._identify_breakpoints(communities)
+        num_communities = len(set(communities))
+        print(f"Resolution: {resolution}, Similarity Threshold: {similarity_threshold}, Communities: {num_communities}")
         
-        num_communities = len(breakpoints) + 1
-        print(f"Resolution: {resolution}, Communities: {num_communities}")
+        return communities
+
+    def _create_chunks_from_communities(self, segments: List[str], communities: List[int], rearrange: bool) -> List[str]:
+        if rearrange:
+            # Group segments by community
+            community_groups = {}
+            for segment, community in zip(segments, communities):
+                if community not in community_groups:
+                    community_groups[community] = []
+                community_groups[community].append(segment)
+            
+            # Create chunks from rearranged communities
+            chunks = [' '.join(group).strip() for group in community_groups.values() if group]
+        else:
+            # Create chunks respecting original order
+            chunks = []
+            current_community = communities[0]
+            current_chunk = []
+            
+            for segment, community in zip(segments, communities):
+                if community != current_community:
+                    chunks.append(' '.join(current_chunk).strip())
+                    current_chunk = []
+                    current_community = community
+                current_chunk.append(segment)
+            
+            # Add the last chunk
+            if current_chunk:
+                chunks.append(' '.join(current_chunk).strip())
         
-        return breakpoints
+        return [chunk for chunk in chunks if chunk]  # Remove any empty chunks
 
     def _identify_breakpoints(self, communities: List[int]) -> List[int]:
         breakpoints = []
@@ -69,13 +96,17 @@ class SemanticSplitter:
                 breakpoints.append(i)
         return breakpoints
 
-    def _create_similarity_graph(self, embeddings: np.ndarray) -> ig.Graph:
-        G = ig.Graph.Full(embeddings.shape[0])
+    def _create_similarity_graph(self, embeddings: np.ndarray, similarity_threshold: float) -> ig.Graph:
         similarities = np.dot(embeddings, embeddings.T)
         np.fill_diagonal(similarities, 0)
         similarities = np.maximum(similarities, 0)
         similarities = (similarities - np.min(similarities)) / (np.max(similarities) - np.min(similarities))
-        G.es['weight'] = similarities[np.triu_indices(embeddings.shape[0], k=1)]
+        
+        # Apply similarity threshold
+        adjacency_matrix = (similarities >= similarity_threshold).astype(int)
+        
+        G = ig.Graph.Adjacency(adjacency_matrix.tolist())
+        G.es['weight'] = similarities[np.where(adjacency_matrix)]
         return G
 
     def _find_optimal_partition(self, G: ig.Graph, resolution: float) -> la.VertexPartition:
@@ -102,19 +133,3 @@ class SemanticSplitter:
                 new_membership.append(comm)
         
         return new_membership
-
-    def _create_chunks_from_communities(self, segments: List[str], breakpoints: List[int]) -> List[str]:
-        chunks = []
-        start = 0
-        for end in breakpoints:
-            chunk = ' '.join(segments[start:end]).strip()
-            if chunk:
-                chunks.append(chunk)
-            start = end
-        
-        # Add the last chunk
-        last_chunk = ' '.join(segments[start:]).strip()
-        if last_chunk:
-            chunks.append(last_chunk)
-        
-        return chunks
